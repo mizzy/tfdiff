@@ -3,12 +3,14 @@ package main
 import (
 	"fmt"
 	"os"
+	"os/exec"
 	"path/filepath"
 	"reflect"
 
 	"github.com/hashicorp/hcl/v2"
 	"github.com/hashicorp/hcl/v2/hclparse"
 	"github.com/hashicorp/hcl/v2/hclsyntax"
+	pp "github.com/k0kubun/pp/v3"
 	"github.com/zclconf/go-cty/cty"
 )
 
@@ -24,7 +26,33 @@ type Block struct {
 }
 
 func main() {
-	parse()
+	currentBranch, err := exec.Command("sh", "-c", "git rev-parse --abbrev-ref HEAD").Output()
+	if err != nil {
+		fmt.Println(err)
+		os.Exit(1)
+	}
+
+	_, err = exec.Command("sh", "-c", "git stash").Output()
+	if err != nil {
+		fmt.Println(err)
+		os.Exit(1)
+	}
+
+	_, err = exec.Command("sh", "-c", "git checkout main || git checkout master").Output()
+	if err != nil {
+		fmt.Println(err)
+		os.Exit(1)
+	}
+
+	mainResources := parse()
+
+	exec.Command("sh", "-c", fmt.Sprintf("git checkout %s", currentBranch)).Output()
+	exec.Command("sh", "-c", "git stash pop").Output()
+
+	currentResources := parse()
+
+	pp.Println(mainResources)
+	pp.Println(currentResources)
 }
 
 func parse() map[string]*Resource {
