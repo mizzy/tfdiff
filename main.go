@@ -24,6 +24,10 @@ type Block struct {
 }
 
 func main() {
+	parse()
+}
+
+func parse() map[string]*Resource {
 	parser := hclparse.NewParser()
 
 	files, err := filepath.Glob("*.tf")
@@ -32,7 +36,8 @@ func main() {
 		os.Exit(1)
 	}
 
-	var resources []*Resource
+	resources := make(map[string]*Resource)
+
 	for _, f := range files {
 		file, parseDiags := parser.ParseHCLFile(f)
 		if parseDiags.HasErrors() {
@@ -42,10 +47,13 @@ func main() {
 
 		for _, block := range reflect.ValueOf(file.Body).Elem().Interface().(hclsyntax.Body).Blocks {
 			if block.Type == "resource" {
-				resources = append(resources, decodeResource(block))
+				resource := decodeResource(block)
+				resources[resource.Name] = resource
 			}
 		}
 	}
+
+	return resources
 }
 
 func decodeResource(block *hclsyntax.Block) *Resource {
