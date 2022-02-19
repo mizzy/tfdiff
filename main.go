@@ -2,16 +2,14 @@ package main
 
 import (
 	"fmt"
+	"github.com/hashicorp/hcl/v2"
+	"github.com/hashicorp/hcl/v2/hclparse"
+	"github.com/hashicorp/hcl/v2/hclsyntax"
+	"github.com/zclconf/go-cty/cty"
 	"os"
 	"os/exec"
 	"path/filepath"
 	"reflect"
-
-	"github.com/hashicorp/hcl/v2"
-	"github.com/hashicorp/hcl/v2/hclparse"
-	"github.com/hashicorp/hcl/v2/hclsyntax"
-	pp "github.com/k0kubun/pp/v3"
-	"github.com/zclconf/go-cty/cty"
 )
 
 type Resource struct {
@@ -51,8 +49,32 @@ func main() {
 
 	currentResources := parse()
 
-	pp.Println(mainResources)
-	pp.Println(currentResources)
+	var differentResources []string
+
+	for name, _ := range mainResources {
+		if _, ok := currentResources[name]; !ok {
+			differentResources = append(differentResources, name)
+			continue
+		}
+
+		if !reflect.DeepEqual(mainResources[name], currentResources[name]) {
+			differentResources = append(differentResources, name)
+		}
+	}
+
+	for name, _ := range currentResources {
+		if _, ok := mainResources[name]; !ok {
+			differentResources = append(differentResources, name)
+		}
+	}
+
+	if len(differentResources) > 0 {
+		for _, r := range differentResources {
+			fmt.Printf("-target %s ", r)
+		}
+	} else {
+		fmt.Print("-refresh=false")
+	}
 }
 
 func parse() map[string]*Resource {
