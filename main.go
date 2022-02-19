@@ -2,13 +2,14 @@ package main
 
 import (
 	"fmt"
+	"os"
+	"path/filepath"
+	"reflect"
+
 	"github.com/hashicorp/hcl/v2"
 	"github.com/hashicorp/hcl/v2/hclparse"
 	"github.com/hashicorp/hcl/v2/hclsyntax"
-	"github.com/k0kubun/pp/v3"
 	"github.com/zclconf/go-cty/cty"
-	"os"
-	"reflect"
 )
 
 type Resource struct {
@@ -25,20 +26,29 @@ type Block struct {
 func main() {
 	parser := hclparse.NewParser()
 
-	file, parseDiags := parser.ParseHCLFile("s3.tf")
-	if parseDiags.HasErrors() {
-		fmt.Println(parseDiags.Error())
+	files, err := filepath.Glob("*.tf")
+	if err != nil {
+		fmt.Println(err)
 		os.Exit(1)
 	}
 
-	for _, block := range reflect.ValueOf(file.Body).Elem().Interface().(hclsyntax.Body).Blocks {
-		if block.Type == "resource" {
-			decodeResource(block)
+	var resources []*Resource
+	for _, f := range files {
+		file, parseDiags := parser.ParseHCLFile(f)
+		if parseDiags.HasErrors() {
+			fmt.Println(parseDiags.Error())
+			os.Exit(1)
+		}
+
+		for _, block := range reflect.ValueOf(file.Body).Elem().Interface().(hclsyntax.Body).Blocks {
+			if block.Type == "resource" {
+				resources = append(resources, decodeResource(block))
+			}
 		}
 	}
 }
 
-func decodeResource(block *hclsyntax.Block) {
+func decodeResource(block *hclsyntax.Block) *Resource {
 	r := &Resource{Name: fmt.Sprintf("%s.%s", block.Labels[0], block.Labels[1])}
 
 	if len(block.Body.Attributes) > 0 {
@@ -49,7 +59,7 @@ func decodeResource(block *hclsyntax.Block) {
 		r.Blocks = decodeBlocks(block.Body.Blocks)
 	}
 
-	pp.Println(r)
+	return r
 }
 
 func decodeAttributes(attributes hclsyntax.Attributes) map[string]cty.Value {
