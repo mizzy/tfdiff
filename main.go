@@ -24,46 +24,43 @@ type Block struct {
 }
 
 func main() {
-	currentBranch, err := exec.Command("sh", "-c", "git rev-parse --abbrev-ref HEAD").Output()
+	headBranch := os.Args[1]
+	baseBranch := os.Args[2]
+
+	_, err := exec.Command("sh", "-c", "git stash").Output()
 	if err != nil {
 		fmt.Println(err)
 		os.Exit(1)
 	}
 
-	_, err = exec.Command("sh", "-c", "git stash").Output()
+	_, err = exec.Command("sh", "-c", fmt.Sprintf("git checkout %s", baseBranch)).Output()
 	if err != nil {
 		fmt.Println(err)
 		os.Exit(1)
 	}
 
-	_, err = exec.Command("sh", "-c", "git checkout main || git checkout master").Output()
-	if err != nil {
-		fmt.Println(err)
-		os.Exit(1)
-	}
+	baseResources := parse()
 
-	mainResources := parse()
-
-	exec.Command("sh", "-c", fmt.Sprintf("git checkout %s", currentBranch)).Output()
+	exec.Command("sh", "-c", fmt.Sprintf("git checkout %s", headBranch)).Output()
 	exec.Command("sh", "-c", "git stash pop").Output()
 
-	currentResources := parse()
+	headResources := parse()
 
 	var differentResources []string
 
-	for name, _ := range mainResources {
-		if _, ok := currentResources[name]; !ok {
+	for name, _ := range baseResources {
+		if _, ok := headResources[name]; !ok {
 			differentResources = append(differentResources, name)
 			continue
 		}
 
-		if !reflect.DeepEqual(mainResources[name], currentResources[name]) {
+		if !reflect.DeepEqual(baseResources[name], headResources[name]) {
 			differentResources = append(differentResources, name)
 		}
 	}
 
-	for name, _ := range currentResources {
-		if _, ok := mainResources[name]; !ok {
+	for name, _ := range headResources {
+		if _, ok := baseResources[name]; !ok {
 			differentResources = append(differentResources, name)
 		}
 	}
