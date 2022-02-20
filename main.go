@@ -96,7 +96,7 @@ func parse() map[string]*Resource {
 		}
 
 		for _, block := range reflect.ValueOf(file.Body).Elem().Interface().(hclsyntax.Body).Blocks {
-			if block.Type == "resource" {
+			if block.Type == "resource" || block.Type == "module" {
 				resource := decodeResource(block)
 				resources[resource.Name] = resource
 			}
@@ -107,7 +107,13 @@ func parse() map[string]*Resource {
 }
 
 func decodeResource(block *hclsyntax.Block) *Resource {
-	r := &Resource{Name: fmt.Sprintf("%s.%s", block.Labels[0], block.Labels[1])}
+	r := &Resource{}
+
+	if block.Type == "resource" {
+		r.Name = fmt.Sprintf("%s.%s", block.Labels[0], block.Labels[1])
+	} else if block.Type == "module" {
+		r.Name = fmt.Sprintf("module.%s", block.Labels[0])
+	}
 
 	if len(block.Body.Attributes) > 0 {
 		r.Attributes = decodeAttributes(block.Body.Attributes)
