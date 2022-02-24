@@ -2,14 +2,17 @@ package main
 
 import (
 	"fmt"
-	"github.com/hashicorp/hcl/v2"
-	"github.com/hashicorp/hcl/v2/hclparse"
-	"github.com/hashicorp/hcl/v2/hclsyntax"
-	"github.com/zclconf/go-cty/cty"
 	"os"
 	"os/exec"
 	"path/filepath"
 	"reflect"
+	"strings"
+
+	"github.com/hashicorp/hcl/v2"
+	"github.com/hashicorp/hcl/v2/hclparse"
+	"github.com/hashicorp/hcl/v2/hclsyntax"
+	"github.com/spf13/cobra"
+	"github.com/zclconf/go-cty/cty"
 )
 
 type Resource struct {
@@ -24,8 +27,61 @@ type Block struct {
 }
 
 func main() {
-	headBranch := os.Args[1]
-	baseBranch := os.Args[2]
+	rootCmd := &cobra.Command{
+		Run: func(c *cobra.Command, args []string) {
+			base, err := c.PersistentFlags().GetString("base")
+			if err != nil {
+				fmt.Println(err)
+				os.Exit(1)
+			}
+
+			target, err := c.PersistentFlags().GetString("target")
+			if err != nil {
+				fmt.Println(err)
+				os.Exit(1)
+			}
+
+			err = diff(base, target)
+			if err != nil {
+				fmt.Println(err)
+				os.Exit(1)
+			}
+		},
+	}
+
+	rootCmd.PersistentFlags().StringP("base", "b", "", "base branch")
+	rootCmd.PersistentFlags().StringP("target", "t", "", "target branch")
+
+	if err := rootCmd.Execute(); err != nil {
+		fmt.Println(err)
+		os.Exit(1)
+	}
+}
+
+func diff(baseBranch, targetBranch string) error {
+	if baseBranch == "" {
+		_, err := exec.Command("sh", "-c", "git branch | grep -q main").Output()
+		if err == nil {
+			baseBranch = "main"
+		}
+
+		_, err = exec.Command("sh", "-c", "git branch | grep -q master").Output()
+		if err == nil {
+			baseBranch = "master"
+		}
+
+		if baseBranch == "" {
+			return fmt.Errorf("can't specify base branch")
+		}
+	}
+
+	if targetBranch == "" {
+		t, err := exec.Command("sh", "-c", "git rev-parse --abbrev-ref HEAD").Output()
+		if err != nil {
+			return err
+		}
+		targetBranch = strings.TrimSpace(string(t))
+	}
 
 	_, err := exec.Command("sh", "-c", "git stash").Output()
 	if err != nil {
@@ -35,13 +91,12 @@ func main() {
 
 	_, err = exec.Command("sh", "-c", fmt.Sprintf("git checkout %s", baseBranch)).Output()
 	if err != nil {
-		fmt.Println(err)
-		os.Exit(1)
+		return err
 	}
 
 	baseResources := parse()
 
-	exec.Command("sh", "-c", fmt.Sprintf("git checkout %s", headBranch)).Output()
+	exec.Command("sh", "-c", fmt.Sprintf("git checkout %s", targetBranch)).Output()
 	exec.Command("sh", "-c", "git stash pop").Output()
 
 	headResources := parse()
@@ -72,6 +127,8 @@ func main() {
 	} else {
 		fmt.Print("-refresh=false")
 	}
+
+	return nil
 }
 
 func parse() map[string]*Resource {
