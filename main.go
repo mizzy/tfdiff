@@ -83,10 +83,15 @@ func diff(baseBranch, targetBranch string) error {
 		targetBranch = strings.TrimSpace(string(t))
 	}
 
-	_, err := exec.Command("sh", "-c", "git stash").Output()
+	stash, err := exec.Command("sh", "-c", "git stash").Output()
 	if err != nil {
 		fmt.Println(err)
 		os.Exit(1)
+	}
+
+	stashed := true
+	if strings.Contains(string(stash), "No local changes to save") {
+		stashed = false
 	}
 
 	_, err = exec.Command("sh", "-c", fmt.Sprintf("git checkout %s", baseBranch)).Output()
@@ -97,24 +102,27 @@ func diff(baseBranch, targetBranch string) error {
 	baseResources := parse()
 
 	exec.Command("sh", "-c", fmt.Sprintf("git checkout %s", targetBranch)).Output()
-	exec.Command("sh", "-c", "git stash pop").Output()
 
-	headResources := parse()
+	if stashed {
+		exec.Command("sh", "-c", "git stash pop").Output()
+	}
+
+	targetResources := parse()
 
 	var differentResources []string
 
 	for name, _ := range baseResources {
-		if _, ok := headResources[name]; !ok {
+		if _, ok := targetResources[name]; !ok {
 			differentResources = append(differentResources, name)
 			continue
 		}
 
-		if !reflect.DeepEqual(baseResources[name], headResources[name]) {
+		if !reflect.DeepEqual(baseResources[name], targetResources[name]) {
 			differentResources = append(differentResources, name)
 		}
 	}
 
-	for name, _ := range headResources {
+	for name, _ := range targetResources {
 		if _, ok := baseResources[name]; !ok {
 			differentResources = append(differentResources, name)
 		}
