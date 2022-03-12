@@ -86,14 +86,20 @@ func diff(baseBranch string) error {
 	if err != nil {
 		return err
 	}
-	baseResources := parse(content)
+	baseResources, err := parse(content)
+	if err != nil {
+		return err
+	}
 
 	// Get resources on the target branch
 	content, err = getContent("", path)
 	if err != nil {
 		return err
 	}
-	targetResources := parse(content)
+	targetResources, err := parse(content)
+	if err != nil {
+		return err
+	}
 
 	var differentResources []string
 
@@ -126,28 +132,25 @@ func diff(baseBranch string) error {
 }
 
 func getContent(baseBranch, path string) ([]byte, error) {
-	var content []byte
+	var buf bytes.Buffer
 
 	if baseBranch == "" {
 		files, err := filepath.Glob("*.tf")
 		if err != nil {
-			return content, nil
+			return nil, err
 		}
 
-		var buf bytes.Buffer
 		for _, f := range files {
 			c, err := ioutil.ReadFile(f)
 			if err != nil {
-				return content, err
+				return nil, err
 			}
 			buf.Write(c)
 		}
-
-		return buf.Bytes(), nil
 	} else {
 		r, err := exec.Command("sh", "-c", "git rev-parse --show-toplevel").Output()
 		if err != nil {
-			return content, err
+			return nil, err
 		}
 		root := strings.TrimSpace(string(r))
 
@@ -158,43 +161,39 @@ func getContent(baseBranch, path string) ([]byte, error) {
 			URL: root,
 		})
 		if err != nil {
-			return content, err
+			return nil, err
 		}
 
 		w, err := repo.Worktree()
 		if err != nil {
-			return content, err
+			return nil, err
 		}
 
 		err = w.Checkout(&git.CheckoutOptions{Branch: plumbing.NewBranchReferenceName(baseBranch)})
 
 		files, err := util.Glob(fs, fmt.Sprintf("%s*.tf", path))
 		if err != nil {
-			return content, err
+			return nil, err
 		}
 
-		var buf bytes.Buffer
 		for _, f := range files {
 			c, err := util.ReadFile(fs, f)
 			if err != nil {
-				return content, err
+				return nil, err
 			}
 			buf.Write(c)
 		}
-
-		return buf.Bytes(), nil
 	}
 
-	return content, nil
+	return buf.Bytes(), nil
 }
 
-func parse(content []byte) map[string]*Resource {
+func parse(content []byte) (map[string]*Resource, error) {
 	resources := make(map[string]*Resource)
 	parser := hclparse.NewParser()
 	file, parseDiags := parser.ParseHCL(content, "")
 	if parseDiags.HasErrors() {
-		fmt.Println(parseDiags.Error())
-		os.Exit(1)
+		return nil, fmt.Errorf(parseDiags.Error())
 	}
 
 	for _, block := range reflect.ValueOf(file.Body).Elem().Interface().(hclsyntax.Body).Blocks {
@@ -204,7 +203,7 @@ func parse(content []byte) map[string]*Resource {
 		}
 	}
 
-	return resources
+	return resources, nil
 }
 
 func decodeResource(block *hclsyntax.Block) *Resource {
